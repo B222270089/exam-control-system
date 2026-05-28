@@ -142,17 +142,60 @@ export async function updateExam(req: Request, res: Response, next: NextFunction
 export async function setExamStatus(req: Request, res: Response, next: NextFunction) {
   try {
     const { status } = req.params;
-    if (!["ready", "open", "closed", "completed"].includes(status)) throw badRequest("Invalid status");
+
+    if (!["ready", "open", "closed", "completed"].includes(status)) {
+      throw badRequest("Invalid status");
+    }
+
     await requireOwnedExam(req.params.examId, req.auth?.id);
+
+    if (status === "open") {
+      await Exam.updateMany(
+        {
+          _id: { $ne: req.params.examId },
+          createdByAdminId: req.auth?.id,
+          status: "open"
+        },
+        {
+          $set: {
+            status: "ready"
+          }
+        }
+      );
+    }
+
     const update: any = { status };
-    if (status === "open") update.openedAt = new Date();
-    if (status === "closed") update.closedAt = new Date();
+
+    if (status === "open") {
+      update.openedAt = new Date();
+    }
+
+    if (status === "closed") {
+      update.closedAt = new Date();
+    }
+
     const exam = await Exam.findByIdAndUpdate(req.params.examId, update, { new: true });
-    if (!exam) throw notFound("Exam not found");
+
+    if (!exam) {
+      throw notFound("Exam not found");
+    }
+
     const io = req.app.get("io");
-    io?.to(`exam:${exam._id}`).emit("exam_status_changed", { examId: exam._id, status: exam.status });
+
+    io?.emit("exam_status_changed", {
+      examId: exam._id,
+      status: exam.status
+    });
+
+    io?.to(`exam:${exam._id}`).emit("exam_status_changed", {
+      examId: exam._id,
+      status: exam.status
+    });
+
     res.json({ exam });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function deleteExam(req: Request, res: Response, next: NextFunction) {
