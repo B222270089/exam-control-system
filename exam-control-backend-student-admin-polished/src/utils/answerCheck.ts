@@ -12,7 +12,7 @@ function addValue(set: Set<string>, value: any) {
 
 function getOptionText(option: any) {
   if (typeof option === "string") return option;
-  return option?.text ?? option?.label ?? option?.value ?? option?.title ?? "";
+  return option?.text ?? option?.label ?? option?.value ?? option?.title ?? option?.answer ?? "";
 }
 
 function getOptionId(option: any) {
@@ -43,7 +43,8 @@ export function getCorrectAnswerSet(question: any): Set<string> {
       const markedCorrect =
         option?.isCorrect === true ||
         option?.correct === true ||
-        option?.isAnswer === true;
+        option?.isAnswer === true ||
+        option?.is_answer === true;
 
       const correctIndex =
         question.correctIndex === i ||
@@ -75,9 +76,21 @@ export function getCorrectAnswerSet(question: any): Set<string> {
 export function isAnswerCorrect(question: any, submittedAnswer: any): boolean {
   const correct = getCorrectAnswerSet(question);
 
+  if (correct.size === 0) return false;
+
   if (Array.isArray(submittedAnswer)) {
     return submittedAnswer.some((answer) => correct.has(normalizeAnswer(answer)));
   }
 
   return correct.has(normalizeAnswer(submittedAnswer));
+}
+
+export function getReadableCorrectAnswer(question: any): string {
+  const correct = Array.from(getCorrectAnswerSet(question));
+  return correct[0] || String(question.correctAnswer ?? question.answer ?? "");
+}
+
+export function getReadableStudentAnswer(answer: any): string {
+  if (Array.isArray(answer)) return answer.map(String).join(", ");
+  return String(answer ?? "");
 }
