@@ -201,7 +201,7 @@ export function StudentExamListPage() {
           <input
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            placeholder="password123"
+            placeholder="Багшаас авсан нууц үг"
             autoComplete="off"
           />
 

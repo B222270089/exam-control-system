@@ -103,15 +103,15 @@ export function StudentEntryPage() {
           <h1>Нэвтрэх эрх шалгах</h1>
           <p className="lead">Хэрэв таны Teams account автоматаар танигдаагүй бол багшаас өгсөн шалгалтын нууц үгийг нэг удаа оруулна.</p>
           <div className="penalty-box soft">
-            Нууц үг амжилттай бол энэ хуудас дахин нууц үг асуухгүй. Local туршилтын нууц үг: <strong>CODE-60</strong>
+            Нууц үг амжилттай бол энэ хуудас дахин нууц үг асуухгүй. Local туршилтын нууц үг: <strong>EXAM-60</strong>
           </div>
           {exam && <div className="summary-list"><div><span>Шалгалт</span><strong>{exam.title}</strong></div><div><span>Төлөв</span><strong>{exam.status || "-"}</strong></div></div>}
           {error && <ErrorBox message={error} />}
           <form className="question-form" onSubmit={submitCode}>
-            <label>Шалгалтын нууц үг<input value={code} onChange={(e) => setCode(e.target.value)} placeholder="CODE-60" autoFocus /></label>
+            <label>Шалгалтын нууц үг<input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Багшаас авсан нууц үг" autoFocus /></label>
             <button disabled={!code.trim() || checkingCode}>{checkingCode ? "Шалгаж байна..." : "Нууц үгээр нэвтрэх"}</button>
           </form>
-          <p className="muted">Нууц үг зөв бол та дүрмийн дэлгэц рүү орно. Нууц үг буруу бол шалгалт өгөх боломжгүй.</p>
+          <p className="muted">Нууц үг зөв бол та шалгалтын хуудас руу орно. Нууц үг буруу бол шалгалт өгөх боломжгүй.</p>
         </section>
       </div>
     );

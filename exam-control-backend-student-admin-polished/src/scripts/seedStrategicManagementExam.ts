@@ -14,7 +14,7 @@ async function seed() {
     throw new Error(`Admin not found. Run npm run seed:admin first. Missing: ${env.adminSeedEmail}`);
   }
 
-  const accessCode = "CODE-60";
+  const accessCode = "EXAM-60";
   let exam: any = await Exam.findOne({ accessCode });
   if (!exam) {
     exam = await Exam.create({
