@@ -1,7 +1,121 @@
-import { FormEvent, useEffect, useState } from "react";\nimport { useNavigate, useParams, useSearchParams } from "react-router-dom";\nimport { devStudentLogin, codeStudentLogin, accessCheck, deviceCheck, teamsSsoLogin } from "../../api/student";\nimport { getErrorMessage } from "../../api/client";\nimport { Loading, ErrorBox } from "../../components/State";\nimport { detectDevice } from "../../utils/device";\nimport { useAuth } from "../../context/AuthContext";\nimport { tryGetTeamsSsoToken } from "../../utils/teamsSso";\nimport { clearBrokenStudentSession } from "../../utils/clearStudentSession";\n\nexport function StudentEntryPage() {\n  const { examId = "" } = useParams();\n  const navigate = useNavigate();\n  const [searchParams] = useSearchParams();\n  const { setRole } = useAuth();\n  const [error, setError] = useState("");\n  const [loadingText, setLoadingText] = useState("Нэвтрэх эрх шалгаж байна...");\n  const [needsCode, setNeedsCode] = useState(false);\n  const [exam, setExam] = useState<any>(null);\n  const [code, setCode] = useState("");\n  const [checkingCode, setCheckingCode] = useState(false);\n\n  async function ensureStudent() {\n    if (localStorage.getItem("studentToken")) return;\n\n    if (import.meta.env.VITE_ENABLE_TEAMS_SSO === "true") {\n      const teamsToken = await tryGetTeamsSsoToken();\n      if (teamsToken) {\n        await teamsSsoLogin(teamsToken);\n        setRole("student");\n        return;\n      }\n    }\n\n    if (import.meta.env.VITE_ALLOW_DEV_STUDENT_LOGIN === "true") {\n      const name = import.meta.env.VITE_DEV_STUDENT_NAME || "Demo Student";\n      const email = import.meta.env.VITE_DEV_STUDENT_EMAIL || "student@example.com";\n      await devStudentLogin(name, email);\n      setRole("student");\n      return;\n    }\n\n    throw new Error("Teams account танигдсангүй. Багшаас өгсөн шалгалтын нууц үгээр орно уу.");\n  }\n\n  async function finishEntry(examCode?: string) {\n    setLoadingText("Нэвтрэх эрх шалгаж байна...");\n    const savedCode = examCode || localStorage.getItem(`examCode:${examId}`) || undefined;\n    const access = await accessCheck(examId, savedCode);\n    setExam(access.exam);\n    if (!access.allowed) {\n      setNeedsCode(true);\n      setLoadingText("");\n      return;\n    }\n    setLoadingText("Төхөөрөмжийн мэдээлэл бүртгэж байна...");\n    if (savedCode) localStorage.setItem(`examCode:${examId}`, savedCode);\n    await deviceCheck(examId, detectDevice());\n    navigate(`/student/rules/${examId}`);\n  }\n\n  useEffect(() => {\n    async function run() {\n      try {\n        await ensureStudent();\n        const initialCode = searchParams.get("code") || localStorage.getItem(`examCode:${examId}`) || undefined;\n        await finishEntry(initialCode);\n      } catch (err) {\n        setNeedsCode(true);\n        setLoadingText("");\n        setError("Нэвтрэх эрх баталгаажсангүй. Багшаас өгсөн шалгалтын нууц үгийг нэг удаа оруулна уу.");\n      }\n    }\n    run();\n  }, [examId]);\n\n  async function submitCode(event: FormEvent) {\n    event.preventDefault();\n    setCheckingCode(true);\n    setError("");\n    try {\n      if (!localStorage.getItem("studentToken")) {\n        const login = await codeStudentLogin(code.trim());\n        setRole("student");\n        const targetExamId = login.exam?.id || login.exam?._id || examId;\n        localStorage.setItem(`examCode:${targetExamId}`, code.trim());\n        if (targetExamId !== examId) {\n          navigate(`/student/entry/${targetExamId}?code=${encodeURIComponent(code.trim())}`);\n          return;\n        }\n      }\n      await finishEntry(code);\n    } catch (err) {\n      const message = getErrorMessage(err);
-      if (message.includes("Session not found")) {
-        clearBrokenStudentSession();
-        window.location.href = "/student/exams";
+import { FormEvent, useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { devStudentLogin, codeStudentLogin, accessCheck, deviceCheck, teamsSsoLogin } from "../../api/student";
+import { getErrorMessage } from "../../api/client";
+import { Loading, ErrorBox } from "../../components/State";
+import { detectDevice } from "../../utils/device";
+import { useAuth } from "../../context/AuthContext";
+import { tryGetTeamsSsoToken } from "../../utils/teamsSso";
+
+export function StudentEntryPage() {
+  const { examId = "" } = useParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { setRole } = useAuth();
+  const [error, setError] = useState("");
+  const [loadingText, setLoadingText] = useState("Нэвтрэх эрх шалгаж байна...");
+  const [needsCode, setNeedsCode] = useState(false);
+  const [exam, setExam] = useState<any>(null);
+  const [code, setCode] = useState("");
+  const [checkingCode, setCheckingCode] = useState(false);
+
+  async function ensureStudent() {
+    if (localStorage.getItem("studentToken")) return;
+
+    if (import.meta.env.VITE_ENABLE_TEAMS_SSO === "true") {
+      const teamsToken = await tryGetTeamsSsoToken();
+      if (teamsToken) {
+        await teamsSsoLogin(teamsToken);
+        setRole("student");
         return;
       }
-      setError(message);\n    } finally {\n      setCheckingCode(false);\n    }\n  }\n\n  if (needsCode) {\n    return (\n      <div className="student-centered">\n        <section className="exam-card narrow">\n          <h1>Нэвтрэх эрх шалгах</h1>\n          <p className="lead">Хэрэв таны Teams account автоматаар танигдаагүй бол багшаас өгсөн шалгалтын нууц үгийг нэг удаа оруулна.</p>\n          <div className="penalty-box soft">\n            Нууц үг амжилттай бол энэ хуудас дахин нууц үг асуухгүй. Local туршилтын нууц үг: <strong>EXAM-60</strong>\n          </div>\n          {exam && <div className="summary-list"><div><span>Шалгалт</span><strong>{exam.title}</strong></div><div><span>Төлөв</span><strong>{exam.status || "-"}</strong></div></div>}\n          {error && <ErrorBox message={error} />}\n          <form className="question-form" onSubmit={submitCode}>\n            <label>Шалгалтын нууц үг<input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Багшаас авсан нууц үг" autoFocus /></label>\n            <button disabled={!code.trim() || checkingCode}>{checkingCode ? "Шалгаж байна..." : "Нууц үгээр нэвтрэх"}</button>\n          </form>\n          <p className="muted">Нууц үг зөв бол та шалгалтын хуудас руу орно. Нууц үг буруу бол шалгалт өгөх боломжгүй.</p>\n        </section>\n      </div>\n    );\n  }\n\n  return <div className="student-centered">{error ? <ErrorBox message={error} /> : <Loading text={loadingText} />}</div>;\n}
+    }
+
+    if (import.meta.env.VITE_ALLOW_DEV_STUDENT_LOGIN === "true") {
+      const name = import.meta.env.VITE_DEV_STUDENT_NAME || "Demo Student";
+      const email = import.meta.env.VITE_DEV_STUDENT_EMAIL || "student@example.com";
+      await devStudentLogin(name, email);
+      setRole("student");
+      return;
+    }
+
+    throw new Error("Teams account танигдсангүй. Багшаас өгсөн шалгалтын нууц үгээр орно уу.");
+  }
+
+  async function finishEntry(examCode?: string) {
+    setLoadingText("Нэвтрэх эрх шалгаж байна...");
+    const savedCode = examCode || localStorage.getItem(`examCode:${examId}`) || undefined;
+    const access = await accessCheck(examId, savedCode);
+    setExam(access.exam);
+    if (!access.allowed) {
+      setNeedsCode(true);
+      setLoadingText("");
+      return;
+    }
+    setLoadingText("Төхөөрөмжийн мэдээлэл бүртгэж байна...");
+    if (savedCode) localStorage.setItem(`examCode:${examId}`, savedCode);
+    await deviceCheck(examId, detectDevice());
+    navigate(`/student/rules/${examId}`);
+  }
+
+  useEffect(() => {
+    async function run() {
+      try {
+        await ensureStudent();
+        const initialCode = searchParams.get("code") || localStorage.getItem(`examCode:${examId}`) || undefined;
+        await finishEntry(initialCode);
+      } catch (err) {
+        setNeedsCode(true);
+        setLoadingText("");
+        setError("Нэвтрэх эрх баталгаажсангүй. Багшаас өгсөн шалгалтын нууц үгийг нэг удаа оруулна уу.");
+      }
+    }
+    run();
+  }, [examId]);
+
+  async function submitCode(event: FormEvent) {
+    event.preventDefault();
+    setCheckingCode(true);
+    setError("");
+    try {
+      if (!localStorage.getItem("studentToken")) {
+        const login = await codeStudentLogin(code.trim());
+        setRole("student");
+        const targetExamId = login.exam?.id || login.exam?._id || examId;
+        localStorage.setItem(`examCode:${targetExamId}`, code.trim());
+        if (targetExamId !== examId) {
+          navigate(`/student/entry/${targetExamId}?code=${encodeURIComponent(code.trim())}`);
+          return;
+        }
+      }
+      await finishEntry(code);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setCheckingCode(false);
+    }
+  }
+
+  if (needsCode) {
+    return (
+      <div className="student-centered">
+        <section className="exam-card narrow">
+          <h1>Нэвтрэх эрх шалгах</h1>
+          <p className="lead">Хэрэв таны Teams account автоматаар танигдаагүй бол багшаас өгсөн шалгалтын нууц үгийг нэг удаа оруулна.</p>
+          <div className="penalty-box soft">
+            Нууц үг амжилттай бол энэ хуудас дахин нууц үг асуухгүй. Local туршилтын нууц үг: <strong>EXAM-60</strong>
+          </div>
+          {exam && <div className="summary-list"><div><span>Шалгалт</span><strong>{exam.title}</strong></div><div><span>Төлөв</span><strong>{exam.status || "-"}</strong></div></div>}
+          {error && <ErrorBox message={error} />}
+          <form className="question-form" onSubmit={submitCode}>
+            <label>Шалгалтын нууц үг<input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Багшаас авсан нууц үг" autoFocus /></label>
+            <button disabled={!code.trim() || checkingCode}>{checkingCode ? "Шалгаж байна..." : "Нууц үгээр нэвтрэх"}</button>
+          </form>
+          <p className="muted">Нууц үг зөв бол та шалгалтын хуудас руу орно. Нууц үг буруу бол шалгалт өгөх боломжгүй.</p>
+        </section>
+      </div>
+    );
+  }
+
+  return <div className="student-centered">{error ? <ErrorBox message={error} /> : <Loading text={loadingText} />}</div>;
+}

@@ -1,13 +1,67 @@
-import { useEffect, useState } from "react";\nimport { useNavigate, useParams } from "react-router-dom";\nimport { accessCheck, startExam } from "../../api/student";\nimport { getErrorMessage } from "../../api/client";\nimport { detectDevice } from "../../utils/device";\nimport { ErrorBox } from "../../components/State";\nimport { clearBrokenStudentSession } from "../../utils/clearStudentSession";\n\nexport function WaitingRoomPage() {\n  const { examId = "" } = useParams();\n  const navigate = useNavigate();\n  const [exam, setExam] = useState<any>(null);\n  const [status, setStatus] = useState("checking");\n  const [error, setError] = useState("");\n  const [starting, setStarting] = useState(false);\n\n  async function load() {\n    try {\n      const savedCode = localStorage.getItem(`examCode:${examId}`) || undefined;\n      const data = await accessCheck(examId, savedCode);\n      setExam(data.exam);\n      setStatus(data.examStatus);\n    } catch (err) {\n      const message = getErrorMessage(err);
-      if (message.includes("Session not found")) {
-        clearBrokenStudentSession();
-        window.location.href = "/student/exams";
-        return;
-      }
-      setError(message);\n    }\n  }\n\n  useEffect(() => {\n    load();\n    const interval = window.setInterval(load, 5000);\n    return () => window.clearInterval(interval);\n  }, [examId]);\n\n  async function onStart() {\n    setStarting(true);\n    setError("");\n    try {\n      const device = detectDevice();\n      const examCode = localStorage.getItem(`examCode:${examId}`) || undefined;\n      const data = await startExam(examId, { ...device, examCode });\n      localStorage.setItem("currentSessionId", data.sessionId);\n      if (data.status === "submitted") navigate(`/student/conclusion/${data.sessionId}`);\n      else if (String(data.status).includes("banned")) navigate(`/student/banned/${data.sessionId}`);\n      else navigate(`/student/exam/${data.sessionId}`);\n    } catch (err) {\n      const message = getErrorMessage(err);
-      if (message.includes("Session not found")) {
-        clearBrokenStudentSession();
-        window.location.href = "/student/exams";
-        return;
-      }
-      setError(message);\n    } finally {\n      setStarting(false);\n    }\n  }\n\n  return (\n    <div className="student-centered">\n      <section className="exam-card narrow">\n        <h1>Хүлээлгийн өрөө</h1>\n        {error && <ErrorBox message={error} />}\n        <div className="summary-list">\n          <div><span>Шалгалт</span><strong>{exam?.title || "-"}</strong></div>\n          <div><span>Төлөв</span><strong>{status === "open" ? "Шалгалт нээлттэй" : "Багш эхлүүлэхийг хүлээж байна"}</strong></div>\n          <div><span>Нийт асуулт</span><strong>{exam?.totalQuestions || "-"}</strong></div>\n          <div><span>Асуулт бүрийн хугацаа</span><strong>{exam?.perQuestionTimeSeconds || "-"} сек</strong></div>\n          <div><span>Хүнд зөрчил</span><strong>3 удаа хүртэл анхааруулга, 4 дэх дээр түгжинэ</strong></div>\n        </div>\n        {status === "open" ? <button disabled={starting} onClick={onStart}>{starting ? "Эхлүүлж байна..." : "Шалгалт эхлүүлэх"}</button> : <p className="muted center">Та шалгалтад холбогдсон байна. Багш эхлүүлэх хүртэл энэ хуудсан дээр хүлээнэ үү. Төлөв 5 секунд тутамд автоматаар шинэчлэгдэнэ.</p>}\n      </section>\n    </div>\n  );\n}
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { accessCheck, startExam } from "../../api/student";
+import { getErrorMessage } from "../../api/client";
+import { detectDevice } from "../../utils/device";
+import { ErrorBox } from "../../components/State";
+
+export function WaitingRoomPage() {
+  const { examId = "" } = useParams();
+  const navigate = useNavigate();
+  const [exam, setExam] = useState<any>(null);
+  const [status, setStatus] = useState("checking");
+  const [error, setError] = useState("");
+  const [starting, setStarting] = useState(false);
+
+  async function load() {
+    try {
+      const savedCode = localStorage.getItem(`examCode:${examId}`) || undefined;
+      const data = await accessCheck(examId, savedCode);
+      setExam(data.exam);
+      setStatus(data.examStatus);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  useEffect(() => {
+    load();
+    const interval = window.setInterval(load, 5000);
+    return () => window.clearInterval(interval);
+  }, [examId]);
+
+  async function onStart() {
+    setStarting(true);
+    setError("");
+    try {
+      const device = detectDevice();
+      const examCode = localStorage.getItem(`examCode:${examId}`) || undefined;
+      const data = await startExam(examId, { ...device, examCode });
+      localStorage.setItem("currentSessionId", data.sessionId);
+      if (data.status === "submitted") navigate(`/student/conclusion/${data.sessionId}`);
+      else if (String(data.status).includes("banned")) navigate(`/student/banned/${data.sessionId}`);
+      else navigate(`/student/exam/${data.sessionId}`);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  return (
+    <div className="student-centered">
+      <section className="exam-card narrow">
+        <h1>Хүлээлгийн өрөө</h1>
+        {error && <ErrorBox message={error} />}
+        <div className="summary-list">
+          <div><span>Шалгалт</span><strong>{exam?.title || "-"}</strong></div>
+          <div><span>Төлөв</span><strong>{status === "open" ? "Шалгалт нээлттэй" : "Багш эхлүүлэхийг хүлээж байна"}</strong></div>
+          <div><span>Нийт асуулт</span><strong>{exam?.totalQuestions || "-"}</strong></div>
+          <div><span>Асуулт бүрийн хугацаа</span><strong>{exam?.perQuestionTimeSeconds || "-"} сек</strong></div>
+          <div><span>Хүнд зөрчил</span><strong>3 удаа хүртэл анхааруулга, 4 дэх дээр түгжинэ</strong></div>
+        </div>
+        {status === "open" ? <button disabled={starting} onClick={onStart}>{starting ? "Эхлүүлж байна..." : "Шалгалт эхлүүлэх"}</button> : <p className="muted center">Та шалгалтад холбогдсон байна. Багш эхлүүлэх хүртэл энэ хуудсан дээр хүлээнэ үү. Төлөв 5 секунд тутамд автоматаар шинэчлэгдэнэ.</p>}
+      </section>
+    </div>
+  );
+}
