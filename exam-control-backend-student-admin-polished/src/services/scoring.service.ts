@@ -4,30 +4,29 @@ import { ExamSession } from "../models/ExamSession.model";
 import { Exam } from "../models/Exam.model";
 import { Result } from "../models/Result.model";
 import { convertScore } from "../utils/scoreConverter";
+import { isAnswerCorrect } from "../utils/answerCheck";
 
 function normalize(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
-export async function gradeAnswer(questionId: string, answerValue: unknown): Promise<{ isCorrect: boolean; pointsEarned: number }> {
-  const question = await Question.findById(questionId);
-  if (!question) return { isCorrect: false, pointsEarned: 0 };
+export async function gradeAnswer(questionId: string, answerValue: any) {
+  const question = await Question.findById(questionId).lean();
 
-  let isCorrect = false;
-  if (["single_choice", "true_false", "dropdown", "image_question"].includes(question.type)) {
-    isCorrect = normalize(answerValue) === normalize(question.correctAnswer);
-  } else if (question.type === "multiple_select") {
-    const submitted = Array.isArray(answerValue) ? answerValue.map(normalize).sort() : [];
-    const correct = Array.isArray(question.correctAnswer) ? question.correctAnswer.map(normalize).sort() : [];
-    isCorrect = submitted.length === correct.length && submitted.every((v, i) => v === correct[i]);
-  } else if (["fill_blank", "short_answer", "calculation", "code_output"].includes(question.type)) {
-    const correctAnswers = Array.isArray(question.correctAnswer) ? question.correctAnswer : [question.correctAnswer];
-    isCorrect = correctAnswers.some((answer) => normalize(answer) === normalize(answerValue));
-  } else if (["matching", "ordering", "image_labeling", "hotspot", "reading", "long_answer"].includes(question.type)) {
-    isCorrect = JSON.stringify(answerValue) === JSON.stringify(question.correctAnswer);
+  if (!question) {
+    return {
+      isCorrect: false,
+      pointsEarned: 0
+    };
   }
 
-  return { isCorrect, pointsEarned: isCorrect ? Number(question.points || 1) : 0 };
+  const isCorrect = isAnswerCorrect(question, answerValue);
+  const points = Number((question as any).points || (question as any).score || 1);
+
+  return {
+    isCorrect,
+    pointsEarned: isCorrect ? points : 0
+  };
 }
 
 async function ensureMissingAnswerRecords(session: any) {
