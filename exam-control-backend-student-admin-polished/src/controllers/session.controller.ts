@@ -11,6 +11,7 @@ import { buildRandomizedExam } from "../services/examRandomizer.service";
 import { getCurrentQuestionPayload } from "../services/questionPresenter.service";
 import { calculateAndSaveResult, gradeAnswer } from "../services/scoring.service";
 import { signToken } from "../utils/jwt";
+import { isAnswerCorrect } from "../utils/answerCheck";
 
 function elapsedSecondsFrom(date?: Date | string | null) {
   if (!date) return 0;

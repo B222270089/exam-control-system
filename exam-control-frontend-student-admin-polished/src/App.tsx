@@ -14,6 +14,7 @@ import { WaitingRoomPage } from "./pages/student/WaitingRoomPage";
 import { ExamTakingPage } from "./pages/student/ExamTakingPage";
 import { ConclusionPage } from "./pages/student/ConclusionPage";
 import { BannedPage } from "./pages/student/BannedPage";
+import { AdminDetailedResultsPage } from "./pages/admin/AdminDetailedResultsPage";
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="banned/:sessionId" element={<BannedPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/admin/login" replace />} />
-    </Routes>
+    <Route path="/admin/exams/:examId/detailed-results" element={<AdminDetailedResultsPage />} />
+      </Routes>
   );
 }
