@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { codeStudentLogin, listAvailableExams } from "../../api/student";
 import { getErrorMessage } from "../../api/client";
-import { EmptyState, ErrorBox, Loading } from "../../components/State";
+import { ErrorBox, Loading } from "../../components/State";
 import { useAuth } from "../../context/AuthContext";
 import type { StudentExamCard } from "../../types";
 
@@ -18,7 +18,6 @@ export function StudentExamListPage() {
   const navigate = useNavigate();
   const { setRole } = useAuth();
 
-  const [exams, setExams] = useState<StudentExamCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -26,6 +25,7 @@ export function StudentExamListPage() {
   const [studentCode, setStudentCode] = useState(localStorage.getItem("studentCode") || "");
   const [examCode, setExamCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [activeExam, setActiveExam] = useState<StudentExamCard | null>(null);
 
   async function load() {
     try {
@@ -34,7 +34,7 @@ export function StudentExamListPage() {
       const token = localStorage.getItem("studentToken");
 
       if (!token) {
-        setExams([]);
+        setActiveExam(null);
         setLoading(false);
         return;
       }
@@ -43,22 +43,33 @@ export function StudentExamListPage() {
       const allExams = Array.isArray(data) ? data : [];
       const activeExams = allExams.filter(isActiveExam);
 
-      if (activeExams.length === 1) {
-        const examId = activeExams[0].id || activeExams[0]._id;
-        navigate(`/student/entry/${examId}`);
-        return;
-      }
+      if (activeExams.length >= 1) {
+        const exam = activeExams[0];
+        setActiveExam(exam);
 
-      setExams(activeExams);
+        if (activeExams.length === 1) {
+          const examId = exam.id || exam._id;
+          navigate(`/student/entry/${examId}`);
+          return;
+        }
+      } else {
+        setActiveExam(null);
+      }
     } catch (err: any) {
       const message = getErrorMessage(err);
 
       if (
         err?.response?.status === 403 ||
         message.includes("Student not found") ||
-        message.includes("Student access required")
+        message.includes("Student access required") ||
+        message.includes("Session not found")
       ) {
-        setExams([]);
+        localStorage.removeItem("studentToken");
+        localStorage.removeItem("student");
+        Object.keys(localStorage)
+          .filter((key) => key.startsWith("examCode:"))
+          .forEach((key) => localStorage.removeItem(key));
+        setActiveExam(null);
         setError("");
       } else {
         setError(message || "Шалгалтын мэдээлэл авах үед алдаа гарлаа.");
@@ -120,7 +131,7 @@ export function StudentExamListPage() {
 
     const interval = window.setInterval(() => {
       load();
-    }, 5000);
+    }, 7000);
 
     return () => window.clearInterval(interval);
   }, []);
@@ -128,7 +139,7 @@ export function StudentExamListPage() {
   if (loading) {
     return (
       <div className="student-centered">
-        <Loading text="Шалгалтын мэдээлэл шалгаж байна..." />
+        <Loading text="Шалгалтын хуудас бэлдэж байна..." />
       </div>
     );
   }
@@ -140,21 +151,28 @@ export function StudentExamListPage() {
           <div>
             <h1>Шалгалтад нэвтрэх</h1>
             <p>
-              Шалгалтад орохын тулд овог нэр, оюутны код болон багшаас өгсөн
-              шалгалтын нууц үгийг оруулна уу.
+              Овог нэр, оюутны код болон багшаас өгсөн шалгалтын нууц үгийг оруулна уу.
+              Нууц үг зөв бол та шалгалтын заавар эсвэл хүлээлгийн өрөө рүү орно.
             </p>
           </div>
           <button className="secondary" onClick={load}>
-            Одоо шалгах
+            Шинэчлэх
           </button>
         </div>
 
-        <form className="code-access-box" onSubmit={submitCode}>
-          <div>
+        <div className="info-box soft">
+          <strong>Анхаарах зүйл</strong>
+          <p>
+            Шалгалтын үеэр өөр tab, website, app руу шилжихгүй. Нэг асуулт нэг удаа гарна.
+            Хугацаа дууссан асуулт 0 оноотой болно.
+          </p>
+        </div>
+
+        <form className="code-access-box clean-entry" onSubmit={submitCode}>
+          <div className="entry-intro">
             <strong>Шалгалтын мэдээлэл</strong>
             <p className="muted">
-              Нууц үгийг зөв оруулбал та шалгалтын заавар эсвэл хүлээлгийн өрөө рүү орно.
-              Нууц үгийг зөвхөн багшаас авна.
+              Доорх мэдээллийг үнэн зөв бөглөнө үү. Оюутны кодоор таны үр дүн admin хэсэгт ялгагдана.
             </p>
           </div>
 
@@ -195,40 +213,13 @@ export function StudentExamListPage() {
 
         {error && <ErrorBox message={error} />}
 
-        {exams.length === 0 ? (
-          <EmptyState
-            title="Шалгалтын мэдээллээ оруулна уу"
-            text="Хэрэв та нэвтэрч чадахгүй бол багшдаа хандана уу."
-          />
+        {activeExam ? (
+          <div className="simple-exam-note">
+            <strong>Идэвхтэй шалгалт:</strong> {activeExam.title}
+          </div>
         ) : (
-          <div className="exam-list-grid">
-            {exams.map((exam) => {
-              const examId = exam.id || exam._id;
-
-              return (
-                <article key={examId} className="exam-list-card">
-                  <div className="exam-list-card-head">
-                    <div>
-                      <h2>{exam.title}</h2>
-                      <p>{exam.subject || "Ерөнхий шалгалт"}</p>
-                    </div>
-                    <span className={`status ${exam.sessionStatus || exam.status}`}>
-                      {exam.status === "open" ? "Нээлттэй" : "Хүлээгдэж байна"}
-                    </span>
-                  </div>
-
-                  <div className="mini-stats">
-                    <span>{exam.totalQuestions} асуулт</span>
-                    <span>{exam.perQuestionTimeSeconds} сек / асуулт</span>
-                    <span>30 оноонд шилжинэ</span>
-                  </div>
-
-                  <button onClick={() => navigate(`/student/entry/${examId}`)}>
-                    Шалгалт руу орох
-                  </button>
-                </article>
-              );
-            })}
+          <div className="simple-exam-note">
+            <strong>Идэвхтэй шалгалт:</strong> Багш шалгалтыг нээсэн үед нууц үгээр орно.
           </div>
         )}
       </section>
