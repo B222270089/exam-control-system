@@ -189,3 +189,15 @@ code { display: block; padding: 14px; border-radius: 12px; background: #111827; 
 @media (max-width: 640px) { .result-grid { grid-template-columns: 1fr; } }
 
 .admin-help-box { background:#f8fafc; border:1px solid #dbeafe; border-radius:18px; padding:16px; line-height:1.6; color:#1f2937; }
+
+
+.field-label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: #374151;
+}
+
+.field-label input {
+  font-weight: 500;
+}

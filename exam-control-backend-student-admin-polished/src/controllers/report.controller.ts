@@ -19,7 +19,7 @@ async function requireOwnedExam(examId: string, adminId?: string) {
 export async function liveExam(req: Request, res: Response, next: NextFunction) {
   try {
     await requireOwnedExam(req.params.examId, req.auth?.id);
-    const sessions = await ExamSession.find({ examId: req.params.examId }).populate("studentId", "displayName email").sort({ updatedAt: -1 });
+    const sessions = await ExamSession.find({ examId: req.params.examId }).populate("studentId", "displayName email studentCode accessMethod").sort({ updatedAt: -1 });
     res.json({ sessions });
   } catch (err) { next(err); }
 }
@@ -27,7 +27,7 @@ export async function liveExam(req: Request, res: Response, next: NextFunction) 
 export async function examResults(req: Request, res: Response, next: NextFunction) {
   try {
     await requireOwnedExam(req.params.examId, req.auth?.id);
-    const results = await Result.find({ examId: req.params.examId }).populate("studentId", "displayName email").sort({ convertedScore: -1 });
+    const results = await Result.find({ examId: req.params.examId }).populate("studentId", "displayName email studentCode accessMethod").sort({ convertedScore: -1 });
     res.json({ results });
   } catch (err) { next(err); }
 }
@@ -50,7 +50,7 @@ export async function studentReport(req: Request, res: Response, next: NextFunct
 export async function exportResults(req: Request, res: Response, next: NextFunction) {
   try {
     await requireOwnedExam(req.params.examId, req.auth?.id);
-    const results = await Result.find({ examId: req.params.examId }).populate("studentId", "displayName email");
+    const results = await Result.find({ examId: req.params.examId }).populate("studentId", "displayName email studentCode accessMethod");
     const rows = results.map((r: any) => ({
       studentName: r.studentId?.displayName || "",
       teamsEmail: r.studentId?.email || "",

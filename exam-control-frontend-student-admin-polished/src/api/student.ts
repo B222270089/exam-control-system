@@ -21,11 +21,27 @@ export async function teamsSsoLogin(teamsSsoToken: string) {
   return data;
 }
 
-export async function codeStudentLogin(code: string, _displayName = "Code Access Student", _email?: string) {
-  const { data } = await api.post("/student/exams/access-code", { code });
-  if (data.token) localStorage.setItem("studentToken", data.token);
+export async function codeStudentLogin(code: string, studentName?: string, studentCode?: string) {
+  const { data } = await api.post("/student/exams/access-code", {
+    code,
+    studentName,
+    studentCode
+  });
+
+  if (data.token) {
+    localStorage.setItem("studentToken", data.token);
+  }
+
   localStorage.removeItem("adminToken");
-  if (data.exam?.id || data.exam?._id) localStorage.setItem(`examCode:${data.exam.id || data.exam._id}`, code);
+
+  if (data.student) {
+    localStorage.setItem("student", JSON.stringify(data.student));
+  }
+
+  if (data.exam?.id || data.exam?._id) {
+    localStorage.setItem(`examCode:${data.exam.id || data.exam._id}`, code);
+  }
+
   return data;
 }
 

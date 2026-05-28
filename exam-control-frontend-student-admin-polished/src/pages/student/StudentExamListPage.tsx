@@ -1,27 +1,10 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  accessExamByCode,
-  codeStudentLogin,
-  listAvailableExams,
-  devStudentLogin,
-  teamsSsoLogin
-} from "../../api/student";
+import { codeStudentLogin, listAvailableExams } from "../../api/student";
 import { getErrorMessage } from "../../api/client";
 import { EmptyState, ErrorBox, Loading } from "../../components/State";
 import { useAuth } from "../../context/AuthContext";
 import type { StudentExamCard } from "../../types";
-import { tryGetTeamsSsoToken } from "../../utils/teamsSso";
-
-function statusLabel(exam: StudentExamCard) {
-  if (exam.sessionStatus === "submitted") return "Илгээсэн";
-  if (String(exam.sessionStatus || "").includes("banned")) return "Түгжигдсэн";
-  if (exam.status === "open") return "Нээлттэй";
-  if (exam.status === "ready") return "Багш эхлүүлэхийг хүлээж байна";
-  if (exam.status === "closed") return "Хаалттай";
-  if (exam.status === "completed") return "Дууссан";
-  return exam.status;
-}
 
 function isFinishedOrLocked(exam: StudentExamCard) {
   return exam.sessionStatus === "submitted" || String(exam.sessionStatus || "").includes("banned");
@@ -38,42 +21,19 @@ export function StudentExamListPage() {
   const [exams, setExams] = useState<StudentExamCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [code, setCode] = useState("");
-  const [codeLoading, setCodeLoading] = useState(false);
-  const autoNavigatedRef = useRef(false);
 
-  async function ensureStudentLogin() {
-    const token = localStorage.getItem("studentToken");
-    if (token) return true;
-
-    if (import.meta.env.VITE_ENABLE_TEAMS_SSO === "true") {
-      const teamsToken = await tryGetTeamsSsoToken();
-
-      if (teamsToken) {
-        await teamsSsoLogin(teamsToken);
-        setRole("student");
-        return true;
-      }
-    }
-
-    if (import.meta.env.VITE_ALLOW_DEV_STUDENT_LOGIN === "true") {
-      const name = import.meta.env.VITE_DEV_STUDENT_NAME || "Demo Student";
-      const email = import.meta.env.VITE_DEV_STUDENT_EMAIL || "student@example.com";
-      await devStudentLogin(name, email);
-      setRole("student");
-      return true;
-    }
-
-    return false;
-  }
+  const [studentName, setStudentName] = useState(localStorage.getItem("studentName") || "");
+  const [studentCode, setStudentCode] = useState(localStorage.getItem("studentCode") || "");
+  const [examCode, setExamCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
     try {
       setError("");
 
-      const loggedIn = await ensureStudentLogin();
+      const token = localStorage.getItem("studentToken");
 
-      if (!loggedIn) {
+      if (!token) {
         setExams([]);
         setLoading(false);
         return;
@@ -83,8 +43,7 @@ export function StudentExamListPage() {
       const allExams = Array.isArray(data) ? data : [];
       const activeExams = allExams.filter(isActiveExam);
 
-      if (activeExams.length === 1 && !autoNavigatedRef.current) {
-        autoNavigatedRef.current = true;
+      if (activeExams.length === 1) {
         const examId = activeExams[0].id || activeExams[0]._id;
         navigate(`/student/entry/${examId}`);
         return;
@@ -95,10 +54,9 @@ export function StudentExamListPage() {
       const message = getErrorMessage(err);
 
       if (
+        err?.response?.status === 403 ||
         message.includes("Student not found") ||
-        message.includes("Student access required") ||
-        message.includes("Teams SSO") ||
-        err?.response?.status === 403
+        message.includes("Student access required")
       ) {
         setExams([]);
         setError("");
@@ -113,45 +71,47 @@ export function StudentExamListPage() {
   async function submitCode(event: FormEvent) {
     event.preventDefault();
 
-    const cleanCode = code.trim();
+    const cleanName = studentName.trim();
+    const cleanStudentCode = studentCode.trim();
+    const cleanExamCode = examCode.trim();
 
-    if (!cleanCode) {
+    if (!cleanName || cleanName.length < 2) {
+      setError("Овог нэрээ бүрэн оруулна уу.");
+      return;
+    }
+
+    if (!cleanStudentCode || cleanStudentCode.length < 2) {
+      setError("Оюутны код / сурагчийн дугаараа оруулна уу.");
+      return;
+    }
+
+    if (!cleanExamCode) {
       setError("Багшаас өгсөн шалгалтын нууц үгийг оруулна уу.");
       return;
     }
 
-    setCodeLoading(true);
+    setSubmitting(true);
     setError("");
 
     try {
-      let data: any;
-
-      if (!localStorage.getItem("studentToken")) {
-        data = await codeStudentLogin(cleanCode);
-      } else {
-        data = await accessExamByCode(cleanCode);
-      }
-
+      const data: any = await codeStudentLogin(cleanExamCode, cleanName, cleanStudentCode);
       const examId = data.exam.id || data.exam._id;
 
       localStorage.removeItem("adminToken");
-      localStorage.setItem(`examCode:${examId}`, cleanCode);
-
-      if (data.token) {
-        localStorage.setItem("studentToken", data.token);
-      }
-
-      if (data.student) {
-        localStorage.setItem("student", JSON.stringify(data.student));
-      }
+      localStorage.setItem("studentToken", data.token);
+      localStorage.setItem("student", JSON.stringify(data.student));
+      localStorage.setItem(`examCode:${examId}`, cleanExamCode);
+      localStorage.setItem("studentName", cleanName);
+      localStorage.setItem("studentCode", cleanStudentCode);
 
       setRole("student");
-      navigate(`/student/entry/${examId}?code=${encodeURIComponent(cleanCode)}`);
+
+      navigate(`/student/entry/${examId}?code=${encodeURIComponent(cleanExamCode)}`);
     } catch (err: any) {
       const message = getErrorMessage(err);
-      setError(message || "Нууц үг шалгах үед алдаа гарлаа.");
+      setError(message || "Нэвтрэх үед алдаа гарлаа.");
     } finally {
-      setCodeLoading(false);
+      setSubmitting(false);
     }
   }
 
@@ -180,8 +140,8 @@ export function StudentExamListPage() {
           <div>
             <h1>Шалгалтад нэвтрэх</h1>
             <p>
-              Энэ шалгалтыг Microsoft Teams бүртгэлтэй сурагчид өгнө. Хэрэв систем таны Teams
-              бүртгэлийг автоматаар танихгүй бол багшаас өгсөн шалгалтын нууц үгийг оруулна уу.
+              Шалгалтад орохын тулд овог нэр, оюутны код болон багшаас өгсөн
+              шалгалтын нууц үгийг оруулна уу.
             </p>
           </div>
           <button className="secondary" onClick={load}>
@@ -191,22 +151,45 @@ export function StudentExamListPage() {
 
         <form className="code-access-box" onSubmit={submitCode}>
           <div>
-            <strong>Багшаас өгсөн нууц үгээр орох</strong>
+            <strong>Шалгалтын мэдээлэл</strong>
             <p className="muted">
-              Нууц үгийг зөв оруулбал та шууд шалгалтын хүлээлгийн өрөө эсвэл зааврын хэсэг рүү орно.
-              Нууц үгийг нэг л удаа оруулна.
+              Нууц үгийг зөв оруулбал та шалгалтын заавар эсвэл хүлээлгийн өрөө рүү орно.
+              Нууц үгийг зөвхөн багшаас авна.
             </p>
           </div>
 
-          <input
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            placeholder="Багшаас авсан нууц үг"
-            autoComplete="off"
-          />
+          <label className="field-label">
+            Овог нэр
+            <input
+              value={studentName}
+              onChange={(event) => setStudentName(event.target.value)}
+              placeholder="Жишээ: Бат-Эрдэнэ Дорж"
+              autoComplete="name"
+            />
+          </label>
 
-          <button disabled={codeLoading || !code.trim()}>
-            {codeLoading ? "Шалгаж байна..." : "Нэвтрэх"}
+          <label className="field-label">
+            Оюутны код / сурагчийн дугаар
+            <input
+              value={studentCode}
+              onChange={(event) => setStudentCode(event.target.value)}
+              placeholder="Жишээ: B222270089"
+              autoComplete="off"
+            />
+          </label>
+
+          <label className="field-label">
+            Шалгалтын нууц үг
+            <input
+              value={examCode}
+              onChange={(event) => setExamCode(event.target.value)}
+              placeholder="Багшаас авсан нууц үг"
+              autoComplete="off"
+            />
+          </label>
+
+          <button disabled={submitting || !studentName.trim() || !studentCode.trim() || !examCode.trim()}>
+            {submitting ? "Шалгаж байна..." : "Шалгалтад орох"}
           </button>
         </form>
 
@@ -214,14 +197,13 @@ export function StudentExamListPage() {
 
         {exams.length === 0 ? (
           <EmptyState
-            title="Одоогоор идэвхтэй шалгалт алга"
-            text="Багш шалгалтыг эхлүүлсэн эсэхийг шалгана уу. Хэрэв таны Teams бүртгэл танигдахгүй бол багшаас нууц үгээ аваарай."
+            title="Шалгалтын мэдээллээ оруулна уу"
+            text="Хэрэв та нэвтэрч чадахгүй бол багшдаа хандана уу."
           />
         ) : (
           <div className="exam-list-grid">
             {exams.map((exam) => {
               const examId = exam.id || exam._id;
-              const disabled = exam.status === "closed" || exam.status === "completed" || isFinishedOrLocked(exam);
 
               return (
                 <article key={examId} className="exam-list-card">
@@ -231,7 +213,7 @@ export function StudentExamListPage() {
                       <p>{exam.subject || "Ерөнхий шалгалт"}</p>
                     </div>
                     <span className={`status ${exam.sessionStatus || exam.status}`}>
-                      {statusLabel(exam)}
+                      {exam.status === "open" ? "Нээлттэй" : "Хүлээгдэж байна"}
                     </span>
                   </div>
 
@@ -241,12 +223,8 @@ export function StudentExamListPage() {
                     <span>30 оноонд шилжинэ</span>
                   </div>
 
-                  <p className="muted">
-                    {exam.description || "Шалгалтын дэлгэрэнгүй тайлбар оруулаагүй байна."}
-                  </p>
-
-                  <button disabled={disabled} onClick={() => navigate(`/student/entry/${examId}`)}>
-                    {exam.status === "open" ? "Шалгалтад орох" : "Хүлээлгийн өрөө рүү орох"}
+                  <button onClick={() => navigate(`/student/entry/${examId}`)}>
+                    Шалгалт руу орох
                   </button>
                 </article>
               );

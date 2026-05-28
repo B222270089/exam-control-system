@@ -7,6 +7,8 @@ const StudentSchema = new Schema(
     email: { type: String, required: true, lowercase: true, trim: true, index: true },
     tenantId: { type: String, default: "dev" },
     teamIds: [{ type: String }],
+    studentCode: { type: String, trim: true, index: true },
+    accessMethod: { type: String, default: "teams_sso" },
     lastLoginAt: { type: Date }
   },
   { timestamps: true }

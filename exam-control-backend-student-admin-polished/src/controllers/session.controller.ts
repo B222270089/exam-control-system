@@ -62,8 +62,11 @@ async function createAnswerOnce(payload: any) {
 
 async function isMatchingCodeFallbackStudent(exam: any, student: any) {
   if (!exam?.allowCodeFallback || !exam?.accessCode || !student?.email) return false;
+
   const safeCode = String(exam.accessCode).toLowerCase().replace(/[^a-z0-9]/gi, "");
-  return String(student.email).toLowerCase() === `code-${safeCode}@local.exam`;
+  const email = String(student.email).toLowerCase();
+
+  return email === `code-${safeCode}@local.exam` || email.startsWith(`code-${safeCode}-`);
 }
 
 async function resolveAccessWithStoredFallback(exam: any, student: any, code?: string) {
@@ -134,9 +137,19 @@ export async function listAvailableExams(req: Request, res: Response, next: Next
 export async function accessByCode(req: Request, res: Response, next: NextFunction) {
   try {
     const code = String(req.body.code || req.query.code || "").trim();
+    const studentName = String(req.body.studentName || "").trim();
+    const studentCode = String(req.body.studentCode || "").trim();
 
     if (!code) {
-      throw badRequest("Exam code is required");
+      throw badRequest("Шалгалтын нууц үг оруулна уу.");
+    }
+
+    if (!studentName || studentName.length < 2) {
+      throw badRequest("Овог нэрээ бүрэн оруулна уу.");
+    }
+
+    if (!studentCode || studentCode.length < 2) {
+      throw badRequest("Оюутны код / сурагчийн дугаараа оруулна уу.");
     }
 
     const exam = await Exam.findOne({
@@ -146,32 +159,62 @@ export async function accessByCode(req: Request, res: Response, next: NextFuncti
     });
 
     if (!exam) {
-      throw forbidden("Invalid exam code or exam is not available");
+      throw forbidden("Нууц үг буруу байна эсвэл шалгалт идэвхгүй байна.");
     }
 
-    const safeCode = code.toLowerCase().replace(/[^a-z0-9]/gi, "");
-    const fallbackEmail = `code-${safeCode}@local.exam`;
+    const safeExamCode = code.toLowerCase().replace(/[^a-z0-9]/gi, "");
+    const safeStudentCode = studentCode.toLowerCase().replace(/[^a-z0-9]/gi, "");
+    const fallbackEmail = `code-${safeExamCode}-${safeStudentCode}@local.exam`;
 
     let student = await Student.findOne({ email: fallbackEmail });
 
     if (!student) {
       student = await Student.create({
-        microsoftUserId: `code-${safeCode}`,
-        displayName: "Code Access Student",
+        microsoftUserId: `code-${safeExamCode}-${safeStudentCode}`,
+        displayName: studentName,
         email: fallbackEmail,
         tenantId: "code-fallback",
-        teamIds: []
+        teamIds: [],
+        studentCode,
+        accessMethod: "code_fallback",
+        lastLoginAt: new Date()
       });
+    } else {
+      student.displayName = studentName;
+      student.studentCode = studentCode;
+      student.accessMethod = "code_fallback";
+      student.lastLoginAt = new Date();
+      await student.save();
     }
 
-    const token = signToken({ sub: student._id.toString(), role: "student", email: student.email });
+    const existingSession = await ExamSession.findOne({
+      examId: exam._id,
+      studentId: student._id,
+      status: { $in: ["submitted", "banned", "banned_provisional"] }
+    });
+
+    if (existingSession && existingSession.status === "submitted" && !existingSession.retakeAllowedAt) {
+      throw forbidden("Та энэ шалгалтыг аль хэдийн илгээсэн байна. Дахин өгөх шаардлагатай бол багшид хандана уу.");
+    }
+
+    if (existingSession && String(existingSession.status).includes("banned") && !existingSession.retakeAllowedAt) {
+      throw forbidden("Таны шалгалт түгжигдсэн байна. Багшид хандана уу.");
+    }
+
+    const token = signToken({
+      sub: student._id.toString(),
+      role: "student",
+      email: student.email
+    });
 
     res.json({
       token,
       student: {
         id: student._id,
         name: student.displayName,
-        email: student.email
+        email: student.email,
+        studentCode,
+        accessMethod: "code_fallback"
       },
       exam: {
         id: exam._id,
@@ -188,7 +231,9 @@ export async function accessByCode(req: Request, res: Response, next: NextFuncti
       accessMethod: "code_fallback",
       code
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function accessCheck(req: Request, res: Response, next: NextFunction) {
